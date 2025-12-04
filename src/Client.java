@@ -13,7 +13,7 @@ public class Client {
             String cmd = console.readLine();
             if (cmd == null || cmd.equalsIgnoreCase("exit")) break;
 
-            // برای هر دستور یک اتصال جدید ساخته می‌شود (راه حل A)
+            // برای هر دستور یک اتصال جدید ساخته می‌شود
             Socket socket = new Socket("localhost", 9100);
 
             System.out.println("Client connected from port " + socket.getLocalPort());
