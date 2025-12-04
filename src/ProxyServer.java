@@ -46,89 +46,92 @@ public class ProxyServer {
         }
     }
 
-    private static void handleClient(Socket client, String clientKey, String fileHost, int filePort) {
+    private static void handleClient(Socket client, String clientKey,
+                                     String fileHost, int filePort) {
+
+        Integer proxyEphemeral = null;
+
         try (
-                Socket c = client;
-                InputStream cin = c.getInputStream();
-                OutputStream cout = c.getOutputStream()
+                Socket c  = client;
+                Socket fs = new Socket(fileHost, filePort) // فقط یک بار برای این کلاینت
         ) {
+            InputStream  cin  = c.getInputStream();
+            OutputStream cout = c.getOutputStream(); // فعلاً استفاده خاصی اینجا نداریم
+            InputStream  fsIn = fs.getInputStream();
+            OutputStream fsOut = fs.getOutputStream();
+
+            proxyEphemeral = fs.getLocalPort();
+
+            // ثبت در NAT: این پورت پروکسی → مخصوص این کلاینت است
+            NATEntry entry = new NATEntry(clientKey, c.getPort(), proxyEphemeral);
+            nat.put(proxyEphemeral, entry);
+
+            System.out.println("Proxy: client " + clientKey +
+                    " mapped to proxy port " + proxyEphemeral + " towards FileServer");
+
+            // 👈 بعد از کانکت شدن و ثبت در NAT، جدول NAT را چاپ کن
+            printNatTable();
+
             while (true) {
                 String request = readLine(cin);
-                if (request == null) break;
+                if (request == null) {
+                    System.out.println("Proxy: client " + clientKey + " closed connection");
+                    break;
+                }
 
-                // اگر کلاینت گفت exit، حلقه‌ی این کلاینت رو می‌بندیم
                 if (request.equalsIgnoreCase("exit")) {
                     System.out.println("Proxy: client " + clientKey + " requested exit");
                     break;
                 }
 
-                Socket fs = null;
-                Integer proxyEphemeral = null;
+                // ارسال request به FileServer روی همین اتصال ثابت
+                fsOut.write((request + "\n").getBytes());
+                fsOut.flush();
 
-                try {
-                    // اتصال به FileServer با یک پورت local تصادفی
-                    fs = new Socket(fileHost, filePort);
-                    proxyEphemeral = fs.getLocalPort();  // این میشه پورت پروکسی در NAT
+                // دریافت هدر از FileServer
+                String header = readLine(fsIn);
+                sendLineFromFsToClient(fs, header);  // via NAT
 
-                    System.out.println("Proxy: client " + clientKey +
-                            " -> FileServer via proxy local port " + proxyEphemeral);
+                if (header == null) {
+                    System.out.println("Proxy: FileServer closed connection for client " + clientKey);
+                    break;
+                }
 
-                    // ثبت در NAT: این پورت مربوط به این کلاینت است
-                    nat.put(proxyEphemeral,
-                            new NATEntry(clientKey, c.getPort(), proxyEphemeral));
+                // DOWNLOAD
+                if (header.startsWith("OK FILE ")) {
+                    long size = Long.parseLong(header.split(" ")[2]);
+                    transferFromFsToClient(fs, size);  // محتوی فایل
+                }
 
-                    OutputStream fsOut = fs.getOutputStream();
-                    InputStream fsIn = fs.getInputStream();
-
-                    // ارسال request به FileServer
-                    fsOut.write((request + "\n").getBytes());
-                    fsOut.flush();
-
-                    // دریافت هدر
-                    String header = readLine(fsIn);
-                    sendLineFromFsToClient(fs, header);   // ارسال هدر با استفاده از NAT
-
-                    if (header != null) {
-
-                        // DOWNLOAD
-                        if (header.startsWith("OK FILE ")) {
-                            long size = Long.parseLong(header.split(" ")[2]);
-                            transferFromFsToClient(fs, size);  // انتقال محتوی فایل
-                        }
-
-                        // LIST
-                        else if (header.startsWith("OK LIST ")) {
-                            while (true) {
-                                String line = readLine(fsIn);
-                                sendLineFromFsToClient(fs, line);
-                                if (line == null || line.equals("END")) break;
-                            }
-                        }
-
-                        // اگر ERROR یا هر چیز دیگری بود، فقط همان هدر فرستاده شد
-                    }
-
-                } finally {
-                    // پاک کردن ورودی NAT مربوط به این ارتباط
-                    if (proxyEphemeral != null) {
-                        nat.remove(proxyEphemeral);
-                    }
-                    if (fs != null) {
-                        try { fs.close(); } catch (IOException ignored) {}
+                // LIST
+                else if (header.startsWith("OK LIST ")) {
+                    while (true) {
+                        String line = readLine(fsIn);
+                        sendLineFromFsToClient(fs, line);
+                        if (line == null || line.equals("END")) break;
                     }
                 }
+
+                // ERROR یا چیزهای دیگر فقط همان header را پاس می‌دهیم
             }
 
         } catch (Exception ex) {
             ex.printStackTrace();
         } finally {
-            // کلاینت دیگر فعال نیست
+            // حذف از NAT و لیست کلاینت‌ها
+            if (proxyEphemeral != null) {
+                nat.remove(proxyEphemeral);
+            }
             clients.remove(clientKey);
-            System.out.println("Proxy: client " + clientKey + " disconnected");
+
+            System.out.println("Proxy: client " + clientKey + " disconnected and NAT entry removed");
+
+            // 👈 بعد از دیسکانکت شدن و حذف از NAT، جدول NAT را چاپ کن
+            printNatTable();
         }
     }
 
-    // ارسال یک خط (هدر یا خط LIST) از FileServer به کلاینت با استفاده از NAT
+    // ارسال یک خط از FileServer به کلاینت با استفاده از NAT
     private static void sendLineFromFsToClient(Socket fs, String line) throws IOException {
         if (line == null) return;
 
@@ -153,7 +156,7 @@ public class ProxyServer {
         Socket client = clients.get(e.clientKey);
         if (client == null) return;
 
-        InputStream in = fs.getInputStream();
+        InputStream  in  = fs.getInputStream();
         OutputStream out = client.getOutputStream();
 
         byte[] buf = new byte[8192];
@@ -177,5 +180,28 @@ public class ProxyServer {
         }
         if (baos.size() == 0 && b == -1) return null;
         return baos.toString().trim();
+    }
+    // چاپ جدول NAT
+    private static void printNatTable() {
+        System.out.println("\n========= NAT TABLE =========");
+
+        if (nat.isEmpty()) {
+            System.out.println("NAT EMPTY");
+            System.out.println("=============================\n");
+            return;
+        }
+
+        for (var entry : nat.entrySet()) {
+            int proxyPort = entry.getKey();
+            NATEntry ne = entry.getValue();
+
+            System.out.println(
+                    "ProxyPort: " + proxyPort +
+                            "  =>  Client: " + ne.clientKey +
+                            "  (ClientPort=" + ne.clientPort + ")"
+            );
+        }
+
+        System.out.println("========= END NAT ==========\n");
     }
 }

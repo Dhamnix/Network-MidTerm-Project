@@ -37,39 +37,51 @@ public class FileServer {
                 InputStream in = s.getInputStream();
                 OutputStream out = s.getOutputStream()
         ) {
-            String line = readLine(in);
-            if (line == null) return;
+            while (true) {
+                String line = readLine(in);
+                if (line == null) break;  // کلاینت قطع شد
 
-            if (line.equalsIgnoreCase("list")) {
-                Stream<Path> files = Files.list(filesDir);
-                List<String> names = new ArrayList<>();
-                files.forEach(p -> names.add(p.getFileName().toString()));
-                writeLine(out, "OK LIST " + names.size());
-                for (String name : names) writeLine(out, name);
-                writeLine(out, "END");
-            }
-
-            else if (line.startsWith("DOWNLOAD ")) {
-                String file = line.substring(9).trim();
-                Path f = filesDir.resolve(file);
-
-                if (!Files.exists(f)) {
-                    writeLine(out, "ERROR File not found");
-                    return;
+                if (line.equalsIgnoreCase("list")) {
+                    try (Stream<Path> files = Files.list(filesDir)) {
+                        List<String> names = new ArrayList<>();
+                        files.forEach(p -> names.add(p.getFileName().toString()));
+                        writeLine(out, "OK LIST " + names.size());
+                        for (String name : names) writeLine(out, name);
+                        writeLine(out, "END");
+                    }
                 }
+                else if (line.toUpperCase().startsWith("DOWNLOAD")) {
+                    if (line.length() <= 9) {
+                        writeLine(out, "ERROR Missing filename");
+                        continue;
+                    }
 
-                long size = Files.size(f);
-                writeLine(out, "OK FILE " + size);
+                    String file = line.substring(9).trim();
+                    Path f = filesDir.resolve(file);
 
-                InputStream fis = Files.newInputStream(f);
-                fis.transferTo(out);
-                out.flush();
+                    if (!Files.exists(f)) {
+                        writeLine(out, "ERROR File not found");
+                        continue;
+                    }
+
+                    long size = Files.size(f);
+                    writeLine(out, "OK FILE " + size);
+
+                    try (InputStream fis = Files.newInputStream(f)) {
+                        fis.transferTo(out);
+                        out.flush();
+                    }
+                }
+                else {
+                    writeLine(out, "ERROR Unknown command: " + line);
+                }
             }
 
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
 
     private static void writeLine(OutputStream out, String s) throws Exception {
         out.write((s + "\n").getBytes());
