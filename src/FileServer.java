@@ -15,7 +15,6 @@ public class FileServer {
             if (!Files.exists(dir))
                 Files.createDirectories(dir);
 
-             //ServerSocket serverSocket = new ServerSocket(port);
             InetAddress bindAddr = InetAddress.getByName("127.0.0.1");
             ServerSocket serverSocket = new ServerSocket(port, 50, bindAddr);
 

@@ -21,7 +21,7 @@ public class ProxyServer {
     public static void main(String[] args) throws Exception {
 
         int proxyPort = 9100;   // پورت ثابت
-        String fileHost = "localhost";
+        String fileHost = "localhost"; //ip file server
         int filePort = 8000;    // به فایل‌سرور وصل می‌شود
 
         ServerSocket serverSocket = new ServerSocket(proxyPort);
