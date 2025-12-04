@@ -7,30 +7,33 @@ public class Client {
 
         BufferedReader console = new BufferedReader(new InputStreamReader(System.in));
 
+        // فقط یک بار به پروکسی وصل می‌شویم
+        Socket socket = new Socket("localhost", 9100);
+        System.out.println("Client connected from local port " + socket.getLocalPort());
+
+        InputStream in = socket.getInputStream();
+        OutputStream out = socket.getOutputStream();
+
         while (true) {
 
             System.out.print("CMD> ");
             String cmd = console.readLine();
-            if (cmd == null || cmd.equalsIgnoreCase("exit")) break;
+            if (cmd == null) break;
 
-            // برای هر دستور یک اتصال جدید ساخته می‌شود
-            Socket socket = new Socket("localhost", 9100);
-
-            System.out.println("Client connected from port " + socket.getLocalPort());
-
-            InputStream in = socket.getInputStream();
-            OutputStream out = socket.getOutputStream();
-
-            // ارسال دستور به پروکسی
+            // ارسال دستور به پروکسی (روی همان اتصال ثابت)
             out.write((cmd + "\n").getBytes());
             out.flush();
+
+            // اگر exit گفتیم، دیگه منتظر پاسخ نمیشیم، حلقه رو می‌بندیم
+            if (cmd.equalsIgnoreCase("exit")) {
+                break;
+            }
 
             // دریافت هدر
             String header = readLine(in);
             if (header == null) {
                 System.out.println("No response from ProxyServer");
-                socket.close();
-                continue;
+                break;
             }
 
             System.out.println(header);
@@ -54,8 +57,11 @@ public class Client {
                 System.out.println("Download completed: " + filename);
             }
 
-            socket.close(); // اتصال مربوط به این دستور بسته می‌شود
+            // اگر ERROR بود، فقط همون هدر چاپ می‌شه
         }
+
+        socket.close(); // اتصال ثابت کلاینت به پروکسی بسته می‌شود
+        System.out.println("Client exited.");
     }
 
 
