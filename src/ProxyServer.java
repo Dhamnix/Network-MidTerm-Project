@@ -20,7 +20,7 @@ public class ProxyServer {
 
     public static void main(String[] args) throws Exception {
 
-        int proxyPort = 9000;   // پورت ثابت
+        int proxyPort = 9100;   // پورت ثابت
         String fileHost = "localhost";
         int filePort = 8000;    // به فایل‌سرور وصل می‌شود
 

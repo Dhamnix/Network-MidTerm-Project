@@ -41,7 +41,7 @@ public class FileServer {
             String line = readLine(in);
             if (line == null) return;
 
-            if (line.equals("LIST")) {
+            if (line.equalsIgnoreCase("list")) {
                 Stream<Path> files = Files.list(filesDir);
                 List<String> names = new ArrayList<>();
                 files.forEach(p -> names.add(p.getFileName().toString()));
